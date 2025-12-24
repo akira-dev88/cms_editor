@@ -123,3 +123,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+.lexical-editor {
+  user-select: text;
+}
+
+.lexical-editor .toolbar {
+  user-select: none;
+}
+
+.lexical-editor .toolbar button {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}

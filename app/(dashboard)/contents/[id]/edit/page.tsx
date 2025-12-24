@@ -55,6 +55,7 @@ export default function EditContentPage() {
   const [excerpt, setExcerpt] = useState('');
   const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
   const [metaData, setMetaData] = useState('{}');
+  const [contentType, setContentType] = useState('');
 
   const [editorContent, setEditorContent] = useState('');
   const [lexicalState, setLexicalState] = useState<any>(null);
@@ -104,67 +105,68 @@ export default function EditContentPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+// In your CreateContentPage component, update the handleSubmit function:
 
-    if (!title || !slug || !user?.id) {
-      setError('Please fill in all required fields');
-      return;
-    }
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
 
-    setIsSubmitting(true);
+  if (!title || !slug || !contentType || !user?.id) {
+    setError('Please fill in all required fields');
+    return;
+  }
 
-    try {
-      // Create plain text from HTML content
-      const plainText = editorContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  setIsSubmitting(true);
 
-      const updateData: any = {
-        title,
-        slug,
-        excerpt,
-        status,
-        meta_data: JSON.parse(metaData),
-        body: {
-          lexical: {
-            root: {
-              type: 'root',
-              format: '',
-              indent: 0,
-              version: 1,
-              children: plainText ? [
-                {
-                  type: 'paragraph',
-                  children: [{ type: 'text', text: plainText }],
-                },
-              ] : [],
-              direction: null,
-            },
-          },
-          html: editorContent,
-          plainText: plainText,
-        },
-      };
+  try {
+    // Use the actual lexical state from the editor
+    const lexicalData = lexicalState || {
+      root: {
+        type: 'root',
+        format: '',
+        indent: 0,
+        version: 1,
+        children: [],
+        direction: null,
+      },
+    };
 
-      await contentApi.updateContent(id, updateData);
+    const contentData = {
+      content_type: contentType,
+      title,
+      slug,
+      author_id: user.id,
+      excerpt,
+      status,
+      body: {
+        lexical: lexicalData,
+        html: editorContent,
+        plainText: plainText || '',
+      },
+      meta_data: metaData && metaData !== '{}' ? JSON.parse(metaData) : {},
+    };
 
-      toast({
-        title: 'Success',
-        description: 'Content updated successfully',
-      });
+    console.log('Creating content with data:', contentData);
 
-      loadContent();
-    } catch (err: any) {
-      console.error('Update content error:', err);
-      setError(err.response?.data?.message || 'Failed to update content');
-      toast({
-        title: 'Error',
-        description: 'Failed to update content',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    const createdContent = await contentApi.createContent(contentData);
+
+    toast({
+      title: 'Success',
+      description: 'Content created successfully',
+    });
+
+    router.push(`/contents/${createdContent.id}/edit`);
+  } catch (err: any) {
+    console.error('Create content error:', err);
+    setError(err.response?.data?.message || err.message || 'Failed to create content');
+    toast({
+      title: 'Error',
+      description: 'Failed to create content',
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this content? This action cannot be undone.')) {

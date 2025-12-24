@@ -48,8 +48,6 @@ export default function CreateContentPage() {
   const [contentType, setContentType] = useState('');
   const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
   const [metaData, setMetaData] = useState('{}');
-  const [content, setContent] = useState('');
-
   
   const [editorContent, setEditorContent] = useState('');
   const [lexicalState, setLexicalState] = useState<any>(null);
@@ -97,72 +95,68 @@ export default function CreateContentPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+// In your CreateContentPage component, update the handleSubmit function:
 
-    if (!title || !slug || !contentType || !user?.id) {
-      setError('Please fill in all required fields');
-      return;
-    }
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
 
-    setIsSubmitting(true);
+  if (!title || !slug || !contentType || !user?.id) {
+    setError('Please fill in all required fields');
+    return;
+  }
 
-    try {
-      // Create a simple lexical structure from HTML content
-      const plainText = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  setIsSubmitting(true);
 
-      const contentData = {
-        content_type: contentType,
-        title,
-        slug,
-        author_id: user.id,
-        excerpt,
-        status,
-        body: {
-          lexical: {
-            root: {
-              type: 'root',
-              format: '',
-              indent: 0,
-              version: 1,
-              children: plainText ? [
-                {
-                  type: 'paragraph',
-                  children: [{ type: 'text', text: plainText }],
-                },
-              ] : [],
-              direction: null,
-            },
-          },
-          html: content,
-          plainText: plainText,
-        },
-        meta_data: JSON.parse(metaData),
-      };
+  try {
+    // Use the actual lexical state from the editor
+    const lexicalData = lexicalState || {
+      root: {
+        type: 'root',
+        format: '',
+        indent: 0,
+        version: 1,
+        children: [],
+        direction: null,
+      },
+    };
 
-      console.log('Creating content with data:', contentData);
+    const contentData = {
+      content_type: contentType,
+      title,
+      slug,
+      author_id: user.id,
+      excerpt,
+      status,
+      body: {
+        lexical: lexicalData,
+        html: editorContent,
+        plainText: plainText || '',
+      },
+      meta_data: metaData && metaData !== '{}' ? JSON.parse(metaData) : {},
+    };
 
-      const createdContent = await contentApi.createContent(contentData);
+    console.log('Creating content with data:', contentData);
 
-      toast({
-        title: 'Success',
-        description: 'Content created successfully',
-      });
+    const createdContent = await contentApi.createContent(contentData);
 
-      router.push(`/contents/${createdContent.id}/edit`);
-    } catch (err: any) {
-      console.error('Create content error:', err);
-      setError(err.response?.data?.message || 'Failed to create content');
-      toast({
-        title: 'Error',
-        description: 'Failed to create content',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    toast({
+      title: 'Success',
+      description: 'Content created successfully',
+    });
 
+    router.push(`/contents/${createdContent.id}/edit`);
+  } catch (err: any) {
+    console.error('Create content error:', err);
+    setError(err.response?.data?.message || err.message || 'Failed to create content');
+    toast({
+      title: 'Error',
+      description: 'Failed to create content',
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
