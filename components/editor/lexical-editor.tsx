@@ -1,198 +1,115 @@
-// components/editor/lexical-editor.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { EditorState } from 'lexical';
-import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import { ListNode, ListItemNode, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
-import { LinkNode } from '@lexical/link';
-import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { AutoLinkPlugin } from '@lexical/react/LexicalAutoLinkPlugin';
+import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 
-// Toolbar Component
-function Toolbar() {
-  const [editor] = useLexicalComposerContext();
-  
-  const formatText = (format: string) => {
-    editor.update(() => {
-      // Formatting logic would go here
-      console.log('Format:', format);
-    });
-  };
+import {
+  HeadingNode,
+  QuoteNode,
+} from '@lexical/rich-text';
+import {
+  ListNode,
+  ListItemNode,
+} from '@lexical/list';
+import {
+  LinkNode,
+  AutoLinkNode,
+} from '@lexical/link';
 
-  return (
-    <div className="flex flex-wrap gap-1 p-2 bg-gray-50 border-b">
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => formatText('bold')}
-      >
-        <strong>B</strong>
-      </button>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => formatText('italic')}
-      >
-        <em>I</em>
-      </button>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => formatText('underline')}
-      >
-        U
-      </button>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => {
-          editor.update(() => {
-            // Insert heading logic
-            console.log('Heading');
-          });
-        }}
-      >
-        H1
-      </button>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => {
-          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-        }}
-      >
-        • List
-      </button>
-      <button
-        type="button"
-        className="px-3 py-1 text-sm border rounded hover:bg-gray-100"
-        onClick={() => {
-          // Link logic
-          const url = prompt('Enter URL:');
-          if (url) {
-            console.log('Insert link:', url);
-          }
-        }}
-      >
-        🔗 Link
-      </button>
-    </div>
-  );
-}
+import { EditorState, LexicalEditor as LexicalEditorType } from 'lexical';
+import { $generateHtmlFromNodes } from '@lexical/html';
+import { useCallback } from 'react';
 
-// Error Boundary
-function EditorErrorBoundary({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+import Toolbar from './plugins/toolbar';
 
-// Theme
-const editorTheme = {
-  ltr: 'ltr',
-  rtl: 'rtl',
-  paragraph: 'my-2',
-  placeholder: 'text-gray-400',
-  text: {
-    bold: 'font-bold',
-    italic: 'italic',
-    underline: 'underline',
-  },
-};
-
-// On Error
-function onError(error: Error) {
-  console.error('Lexical Editor Error:', error);
-}
-
-export interface LexicalEditorProps {
-  value?: any;
-  onChange?: (editorState: EditorState) => void;
+interface Props {
+  onChange?: (data: {
+    lexical: any;
+    html: string;
+    plainText: string;
+  }) => void;
   placeholder?: string;
 }
 
+const editorConfig = {
+  namespace: 'ContentEditor',
+  theme: {
+    heading: {
+      h1: 'text-3xl font-bold',
+      h2: 'text-2xl font-bold',
+      h3: 'text-xl font-bold',
+    },
+    text: {
+      bold: 'font-bold',
+      italic: 'italic',
+      underline: 'underline',
+    },
+  },
+  onError(error: Error) {
+    console.error(error);
+  },
+  nodes: [
+    HeadingNode,
+    QuoteNode,
+    ListNode,
+    ListItemNode,
+    LinkNode,
+    AutoLinkNode,
+  ],
+};
+
 export default function LexicalEditor({
-  value,
   onChange,
   placeholder = 'Start writing...',
-}: LexicalEditorProps) {
-  const [isMounted, setIsMounted] = useState(false);
+}: Props) {
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const handleChange = useCallback(
+    (editorState: EditorState, editor: LexicalEditorType) => {
+      editorState.read(() => {
+        const html = $generateHtmlFromNodes(editor);
+        const plainText = editor.getRootElement()?.innerText || '';
 
-  // Create safe initial state
-  const getInitialState = () => {
-    if (!value) {
-      return undefined;
-    }
-    
-    // If it's already a Lexical JSON object
-    if (value.root && value.root.type === 'root') {
-      return value;
-    }
-    
-    // If it's an EditorState (shouldn't happen)
-    if (typeof value.toJSON === 'function') {
-      return value.toJSON();
-    }
-    
-    return undefined;
-  };
-
-  const initialConfig = {
-    namespace: 'CMS Editor',
-    theme: editorTheme,
-    onError,
-    editorState: getInitialState(),
-    nodes: [HeadingNode, ListNode, ListItemNode, QuoteNode, LinkNode],
-  };
-
-  if (!isMounted) {
-    return (
-      <div className="border rounded-lg min-h-50 p-4 bg-gray-50">
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-      </div>
-    );
-  }
+        onChange?.({
+          lexical: editorState.toJSON(),
+          html,
+          plainText,
+        });
+      });
+    },
+    [onChange]
+  );
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <LexicalComposer initialConfig={initialConfig}>
+    <div className="border rounded-lg overflow-hidden bg-white">
+      <LexicalComposer initialConfig={editorConfig}>
         <Toolbar />
-        <div className="relative">
-          <RichTextPlugin
-            contentEditable={
-              <ContentEditable 
-                className="min-h-50 p-4 outline-none" 
-              />
-            }
-            placeholder={
-              <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
-                {placeholder}
-              </div>
-            }
-            ErrorBoundary={EditorErrorBoundary}
-          />
-          {onChange && (
-            <OnChangePlugin 
-              onChange={onChange} 
-              ignoreSelectionChange={true}
-            />
-          )}
-          <HistoryPlugin />
-          <LinkPlugin />
-          <ListPlugin />
-        </div>
+
+        <RichTextPlugin
+          contentEditable={
+            <ContentEditable className="min-h-75 p-4 outline-none" />
+          }
+          placeholder={
+            <div className="absolute top-4 left-4 text-gray-400 pointer-events-none">
+              {placeholder}
+            </div>
+          }
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+
+        <HistoryPlugin />
+        <ListPlugin />
+        <LinkPlugin />
+
+        <AutoLinkPlugin matchers={[]} />
+
+        <OnChangePlugin onChange={handleChange} />
       </LexicalComposer>
     </div>
   );

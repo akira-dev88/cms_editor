@@ -29,6 +29,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Save } from 'lucide-react';
 import { ContentStatus } from '@/types/content';
 import { useToast } from '@/lib/hooks/use-toast';
+import LexicalEditor from '@/components/editor/lexical-editor';
 
 export default function CreateContentPage() {
   const router = useRouter();
@@ -48,6 +49,12 @@ export default function CreateContentPage() {
   const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
   const [metaData, setMetaData] = useState('{}');
   const [content, setContent] = useState('');
+
+  
+  const [editorContent, setEditorContent] = useState('');
+  const [lexicalState, setLexicalState] = useState<any>(null);
+  const [plainText, setPlainText] = useState('');
+
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -104,7 +111,7 @@ export default function CreateContentPage() {
     try {
       // Create a simple lexical structure from HTML content
       const plainText = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-      
+
       const contentData = {
         content_type: contentType,
         title,
@@ -210,10 +217,12 @@ export default function CreateContentPage() {
 
                   <div>
                     <Label>Content</Label>
-                    <WysiwygEditor
-                      value={content}
-                      onChange={setContent}
-                      placeholder="Start writing your content here..."
+                    <LexicalEditor
+                      onChange={({ lexical, html, plainText }) => {
+                        setEditorContent(html);
+                        setLexicalState(lexical);
+                        setPlainText(plainText);
+                      }}
                     />
                   </div>
                 </div>

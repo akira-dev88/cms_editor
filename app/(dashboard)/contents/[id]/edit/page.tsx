@@ -34,27 +34,31 @@ import {
 } from 'lucide-react';
 import { ContentStatus } from '@/types/content';
 import { useToast } from '@/lib/hooks/use-toast';
+import LexicalEditor from '@/components/editor/lexical-editor';
 
 export default function EditContentPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  
+
   const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
-  
+
   const [content, setContent] = useState<any>(null);
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
   const [excerpt, setExcerpt] = useState('');
   const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
   const [metaData, setMetaData] = useState('{}');
+
   const [editorContent, setEditorContent] = useState('');
+  const [lexicalState, setLexicalState] = useState<any>(null);
+  const [plainText, setPlainText] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -78,7 +82,7 @@ export default function EditContentPage() {
       setExcerpt(contentData.excerpt || '');
       setStatus(contentData.status);
       setMetaData(JSON.stringify(contentData.meta_data || {}, null, 2));
-      
+
       // Get content from body (prefer HTML, then plain text)
       if (contentData.body?.html) {
         setEditorContent(contentData.body.html);
@@ -87,7 +91,7 @@ export default function EditContentPage() {
       } else {
         setEditorContent('');
       }
-      
+
     } catch (error) {
       console.error('Failed to load content:', error);
       toast({
@@ -114,7 +118,7 @@ export default function EditContentPage() {
     try {
       // Create plain text from HTML content
       const plainText = editorContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-      
+
       const updateData: any = {
         title,
         slug,
@@ -143,12 +147,12 @@ export default function EditContentPage() {
       };
 
       await contentApi.updateContent(id, updateData);
-      
+
       toast({
         title: 'Success',
         description: 'Content updated successfully',
       });
-      
+
       loadContent();
     } catch (err: any) {
       console.error('Update content error:', err);
@@ -215,7 +219,7 @@ export default function EditContentPage() {
             Last updated: {new Date(content.updated_at).toLocaleDateString()}
           </p>
         </div>
-        
+
         <div className="flex items-center space-x-2">
           <Button
             variant="destructive"
@@ -266,10 +270,12 @@ export default function EditContentPage() {
 
                   <div>
                     <Label>Content</Label>
-                    <WysiwygEditor
-                      value={editorContent}
-                      onChange={setEditorContent}
-                      placeholder="Start writing your content here..."
+                    <LexicalEditor
+                      onChange={({ lexical, html, plainText }) => {
+                        setEditorContent(html);
+                        setLexicalState(lexical);
+                        setPlainText(plainText);
+                      }}
                     />
                   </div>
                 </div>
