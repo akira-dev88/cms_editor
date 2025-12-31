@@ -3,6 +3,7 @@ import { apiClient } from './client';
 import { ContentStatus } from '@/types/content';
 
 export interface ContentResponse {
+  content_type: any;
   id: string;
   title: string;
   slug: string;

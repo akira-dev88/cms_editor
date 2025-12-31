@@ -1,3 +1,4 @@
+// components/editor/lexical-editor.tsx
 'use client';
 
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
@@ -10,6 +11,7 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { CheckListPlugin } from '@lexical/react/LexicalCheckListPlugin';
 import { TabIndentationPlugin } from '@lexical/react/LexicalTabIndentationPlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
+import { ImageNode } from './nodes/ImageNode';
 
 import {
   HeadingNode,
@@ -32,6 +34,7 @@ import { useCallback } from 'react';
 
 import Toolbar from './plugins/toolbar';
 
+// Update this interface to include the new props
 interface Props {
   onChange?: (data: {
     lexical: any;
@@ -40,7 +43,19 @@ interface Props {
   }) => void;
   placeholder?: string;
   initialValue?: any;
+  contentId?: string;
+  selectedMediaCount?: number; // Add this
+  onMediaSelect?: (media: any) => void; // Add this
 }
+
+// Remove the duplicate interface
+// interface LexicalEditorProps {
+//   onChange: ({ lexical, html, plainText }: { lexical: any; html: string; plainText: string }) => void;
+//   initialHtml?: string;
+//   contentId?: string;
+//   selectedMediaCount?: number;
+//   onMediaSelect?: (media: any) => void;
+// }
 
 const editorConfig = {
   namespace: 'ContentEditor',
@@ -59,7 +74,7 @@ const editorConfig = {
     },
     paragraph: 'my-2',
     quote: 'border-l-4 border-gray-300 pl-4 italic my-4',
-     list: {
+    list: {
       nested: {
         listitem: 'list-none',
       },
@@ -69,6 +84,7 @@ const editorConfig = {
     },
     link: 'text-blue-600 underline cursor-pointer',
   },
+  image: 'editor-image',
   onError(error: Error) {
     console.error('Lexical Editor Error:', error);
   },
@@ -83,6 +99,7 @@ const editorConfig = {
     TableNode,
     TableCellNode,
     TableRowNode,
+    ImageNode, // Don't forget to add ImageNode here!
   ],
 };
 
@@ -90,6 +107,9 @@ export default function LexicalEditor({
   onChange,
   placeholder = 'Start writing...',
   initialValue,
+  contentId,
+  selectedMediaCount = 0, // Add default value
+  onMediaSelect, // Add this prop
 }: Props) {
   const handleChange = useCallback(
     (editorState: EditorState, editor: LexicalEditorType) => {
@@ -98,7 +118,7 @@ export default function LexicalEditor({
           const html = $generateHtmlFromNodes(editor);
           const plainText = editor.getRootElement()?.innerText || '';
           const lexical = editorState.toJSON();
-          
+
           onChange?.({
             lexical,
             html,
@@ -116,14 +136,18 @@ export default function LexicalEditor({
     <div className="border rounded-lg overflow-hidden bg-white">
       <LexicalComposer initialConfig={{ ...editorConfig, editorState: initialValue }}>
         <div className="border-b">
-          <Toolbar />
+          <Toolbar
+            contentId={contentId}
+            selectedMediaCount={selectedMediaCount}
+            onMediaSelect={onMediaSelect}
+          />
         </div>
 
         <div className="relative">
           <RichTextPlugin
             contentEditable={
-              <ContentEditable 
-                className="min-h-[300px] p-4 outline-none focus:outline-none"
+              <ContentEditable
+                className="min-h-75 p-4 outline-none focus:outline-none"
                 aria-label="Editor"
               />
             }

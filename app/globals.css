@@ -138,3 +138,40 @@
   -ms-user-select: none;
   user-select: none;
 }
+
+.editor-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
+.editor-image:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Caption styling */
+figure figcaption {
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+/* Media modal styles */
+.media-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.media-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.media-item:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
