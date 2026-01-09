@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -123,6 +123,9 @@ export default function MediaModal({ isOpen, onClose, onSelect }: MediaModalProp
 
         <DialogHeader>
           <DialogTitle>Media Library</DialogTitle>
+          <DialogDescription className="sr-only">
+            Browse and select images from your media library or upload new images
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="flex-1 flex flex-col">
