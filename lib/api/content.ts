@@ -70,6 +70,7 @@ export interface UpdateContentDto {
   };
   status?: ContentStatus;
   meta_data?: Record<string, any>;
+  content_type_id?: string;
   template?: string;
   is_featured?: boolean;
   is_pinned?: boolean;

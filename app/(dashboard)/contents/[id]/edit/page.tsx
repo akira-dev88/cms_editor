@@ -1,11 +1,10 @@
-// app/(dashboard)/contents/[id]/edit/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { contentApi } from '@/lib/api/content';
-import { mediaApi } from '@/lib/api/media'; // Add media API import
+import { mediaApi } from '@/lib/api/media';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,37 +31,201 @@ import {
   Trash2,
   ArrowLeft,
   Image as ImageIcon,
-  Upload,
-  X,
-  Search,
 } from 'lucide-react';
 import { ContentStatus } from '@/types/content';
 import { useToast } from '@/lib/hooks/use-toast';
 import LexicalEditor from '@/components/editor/lexical-editor';
+import MediaModal from './components/MediaModal';
+import ContentStats from './components/ContentStats';
+import type { MediaItem } from '@/types/media';
+import { transformMediaItem } from '@/lib/utils/media';
 
-interface MediaItem {
-  id: string;
-  filename: string;
-  original_filename: string;
-  mime_type: string;
-  file_size: number;
-  url: string;
-  thumbnail_url?: string;
-  dimensions?: {
-    width: number;
-    height: number;
+// ========== Types ==========
+interface ContentFormData {
+  title: string;
+  slug: string;
+  excerpt: string;
+  status: ContentStatus;
+  metaData: string;
+  contentType: string;
+  editorContent: string;
+  lexicalState: any;
+  plainText: string;
+}
+
+// ========== Custom Hooks ==========
+const useContentLoader = (id: string) => {
+  const [content, setContent] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const loadContent = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const contentData = await contentApi.getContent(id);
+      setContent(contentData);
+      return contentData;
+    } catch (error) {
+      console.error('❌ Failed to load content:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load content',
+      });
+      router.push('/contents');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id, router, toast]);
+
+  return { content, isLoading, loadContent };
+};
+
+const useMediaManager = (contentId: string) => {
+  const [contentMedia, setContentMedia] = useState<MediaItem[]>([]);
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
+  const { toast } = useToast();
+
+  const loadContentMedia = useCallback(async () => {
+    try {
+      const response = await mediaApi.getContentMedia(contentId);
+      const mediaItems: MediaItem[] = [];
+
+      if (Array.isArray(response)) {
+        for (const item of response) {
+          if (item.media) {
+            const transformed = transformMediaItem(item.media);
+            if (transformed) {
+              mediaItems.push(transformed);
+            }
+          }
+        }
+      }
+
+      setContentMedia(mediaItems);
+    } catch (error) {
+      console.error('❌ Failed to load content media:', error);
+    }
+  }, [contentId]);
+
+  const attachMediaToContent = useCallback(async (mediaItems: MediaItem[]) => {
+    if (mediaItems.length === 0) return;
+
+    try {
+      const currentMediaIds = contentMedia.map(m => m.id);
+      const mediaToAttach = mediaItems.filter(m => !currentMediaIds.includes(m.id));
+
+      if (mediaToAttach.length === 0) return;
+
+      const attachmentPromises = mediaToAttach.map(media =>
+        mediaApi.attachToContent(contentId, media.id, 'inline')
+      );
+      await Promise.all(attachmentPromises);
+      toast({
+        title: 'Success',
+        description: `Attached ${mediaToAttach.length} media file(s) to content`,
+      });
+      await loadContentMedia();
+    } catch (error) {
+      console.error('❌ Failed to attach media:', error);
+    }
+  }, [contentId, contentMedia, loadContentMedia, toast]);
+
+  const handleMediaSelect = useCallback((media: MediaItem) => {
+    const isSelected = selectedMedia.some(m => m.id === media.id);
+
+    if (isSelected) {
+      setSelectedMedia(prev => prev.filter(m => m.id !== media.id));
+      toast({
+        title: 'Media removed',
+        description: 'Media will not be attached',
+      });
+    } else {
+      setSelectedMedia(prev => [...prev, media]);
+      toast({
+        title: 'Media selected',
+        description: 'Media will be attached after save',
+      });
+    }
+  }, [selectedMedia, toast]);
+
+  const handleDetachMedia = useCallback(async (mediaId: string) => {
+    try {
+      await mediaApi.detachFromContent(contentId, mediaId);
+      setContentMedia(prev => prev.filter(m => m.id !== mediaId));
+      setSelectedMedia(prev => prev.filter(m => m.id !== mediaId));
+      toast({
+        title: 'Success',
+        description: 'Media detached from content',
+      });
+    } catch (error) {
+      console.error('❌ Failed to detach media:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to detach media',
+      });
+    }
+  }, [contentId, toast]);
+
+  return {
+    contentMedia,
+    selectedMedia,
+    setSelectedMedia,
+    loadContentMedia,
+    attachMediaToContent,
+    handleMediaSelect,
+    handleDetachMedia,
   };
-  created_at: string;
-}
+};
 
-interface ContentMedia {
-  id: string;
-  media: MediaItem;
-  role: string;
-  sort_order: number;
-  assigned_at: string;
-}
+// ========== Helper Functions ==========
+const initializeFormData = (contentData: any): ContentFormData => ({
+  title: contentData.title || '',
+  slug: contentData.slug || '',
+  excerpt: contentData.excerpt || '',
+  status: contentData.status || ContentStatus.DRAFT,
+  metaData: JSON.stringify(contentData.meta_data || {}, null, 2),
+  contentType: contentData.content_type?.slug || '',
+  editorContent: contentData.body?.html || contentData.body?.plainText || '',
+  lexicalState: contentData.body?.lexical || null,
+  plainText: contentData.body?.plainText || '',
+});
 
+
+const prepareUpdateData = (
+  formData: ContentFormData,
+  userId: string,
+  contentData: any // Add this parameter to get the original content
+): any => ({
+  title: formData.title,
+  slug: formData.slug,
+  excerpt: formData.excerpt,
+  status: formData.status,
+  body: {
+    lexical: formData.lexicalState || {
+      root: {
+        type: 'root',
+        format: '',
+        indent: 0,
+        version: 1,
+        children: [],
+        direction: null,
+      },
+    },
+    html: formData.editorContent,
+    plainText: formData.plainText || '',
+  },
+  meta_data: formData.metaData && formData.metaData !== '{}'
+    ? JSON.parse(formData.metaData)
+    : {},
+  // Use the content_type_id from the original content data
+  content_type_id: contentData.content_type?.id || contentData.content_type_id,
+  // Also include author_id if required
+  author_id: userId,
+});
+
+// ========== Main Component ==========
 export default function EditContentPage() {
   const router = useRouter();
   const params = useParams();
@@ -71,57 +234,36 @@ export default function EditContentPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const [isLoading, setIsLoading] = useState(true);
+  // State
+  const [formData, setFormData] = useState<ContentFormData>({
+    title: '',
+    slug: '',
+    excerpt: '',
+    status: ContentStatus.DRAFT,
+    metaData: '{}',
+    contentType: '',
+    editorContent: '',
+    lexicalState: null,
+    plainText: '',
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
-
-  // Media states
   const [showMediaModal, setShowMediaModal] = useState(false);
-  const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
-  const [contentMedia, setContentMedia] = useState<ContentMedia[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeMediaTab, setActiveMediaTab] = useState<'library' | 'upload'>('library');
 
-  // Existing states
-  const [content, setContent] = useState<any>(null);
-  const [title, setTitle] = useState('');
-  const [slug, setSlug] = useState('');
-  const [excerpt, setExcerpt] = useState('');
-  const [status, setStatus] = useState<ContentStatus>(ContentStatus.DRAFT);
-  const [metaData, setMetaData] = useState('{}');
-  const [contentType, setContentType] = useState('');
+  // Hooks
+  const { content, isLoading, loadContent } = useContentLoader(id);
+  const {
+    contentMedia,
+    selectedMedia,
+    setSelectedMedia,
+    loadContentMedia,
+    attachMediaToContent,
+    handleMediaSelect,
+    handleDetachMedia,
+  } = useMediaManager(id);
 
-  const [editorContent, setEditorContent] = useState('');
-  const [lexicalState, setLexicalState] = useState<any>(null);
-  const [plainText, setPlainText] = useState('');
-
-  // Load content media
-  const loadContentMedia = async () => {
-    try {
-      const media = await mediaApi.getContentMedia(id);
-      setContentMedia(media);
-    } catch (error) {
-      console.error('Failed to load content media:', error);
-    }
-  };
-
-  // Load media library
-  const loadMediaLibrary = async () => {
-    try {
-      const response = await mediaApi.getAll({ search: searchQuery });
-      setMediaLibrary(response.data);
-    } catch (error) {
-      console.error('Failed to load media library:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load media library',
-      });
-    }
-  };
-
+  // Effects
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -130,59 +272,28 @@ export default function EditContentPage() {
 
   useEffect(() => {
     if (id && user) {
-      loadContent();
-      loadContentMedia();
+      loadContentAndMedia();
     }
   }, [id, user]);
 
-  useEffect(() => {
-    if (showMediaModal && activeMediaTab === 'library') {
-      loadMediaLibrary();
+  const loadContentAndMedia = async () => {
+    const loadedContent = await loadContent();
+    if (loadedContent) {
+      setFormData(initializeFormData(loadedContent));
+      await loadContentMedia();
     }
-  }, [showMediaModal, activeMediaTab, searchQuery]);
+  };
 
-  const loadContent = async () => {
-    try {
-      setIsLoading(true);
-      const contentData = await contentApi.getContent(id);
-      setContent(contentData);
-      setTitle(contentData.title);
-      setSlug(contentData.slug);
-      setExcerpt(contentData.excerpt || '');
-      setStatus(contentData.status);
-      setContentType(contentData.content_type?.slug || '');
-      setMetaData(JSON.stringify(contentData.meta_data || {}, null, 2));
-
-      // Get content from body
-      if (contentData.body?.html) {
-        setEditorContent(contentData.body.html);
-      } else if (contentData.body?.plainText) {
-        setEditorContent(contentData.body.plainText);
-      } else {
-        setEditorContent('');
-      }
-
-      if (contentData.body?.lexical) {
-        setLexicalState(contentData.body.lexical);
-      }
-
-    } catch (error) {
-      console.error('Failed to load content:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load content',
-      });
-      router.push('/contents');
-    } finally {
-      setIsLoading(false);
-    }
+  // Event Handlers
+  const handleFormChange = (field: keyof ContentFormData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!title || !slug || !user?.id) {
+    if (!formData.title || !formData.slug || !user?.id || !content) {
       setError('Please fill in all required fields');
       return;
     }
@@ -190,29 +301,35 @@ export default function EditContentPage() {
     setIsSubmitting(true);
 
     try {
-      const contentData = {
-        content_type: contentType,
-        title,
-        slug,
-        excerpt,
-        status,
-        body: {
-          lexical: lexicalState,
-          html: editorContent,
-          plainText: plainText || '',
-        },
-        meta_data: metaData && metaData !== '{}' ? JSON.parse(metaData) : {},
-      };
+      const updateData = prepareUpdateData(formData, user.id, content);
+      console.log('📝 Updating content with data:', updateData);
 
-      await contentApi.updateContent(id, contentData);
+      await contentApi.updateContent(id, updateData);
+
+      // Attach any selected media
+      if (selectedMedia.length > 0) {
+        await attachMediaToContent(selectedMedia);
+        setSelectedMedia([]);
+      }
 
       toast({
         title: 'Success',
         description: 'Content updated successfully',
       });
+
+      // Refresh the content after update
+      await loadContentAndMedia();
+
     } catch (err: any) {
-      console.error('Update content error:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to update content');
+      console.error('❌ Update content error:', err);
+
+      // More detailed error message
+      if (err.response?.status === 500) {
+        setError('Server error: Failed to update content. Please check the content type.');
+      } else {
+        setError(err.response?.data?.message || err.message || 'Failed to update content');
+      }
+
       toast({
         title: 'Error',
         description: 'Failed to update content',
@@ -236,7 +353,7 @@ export default function EditContentPage() {
       });
       router.push('/contents');
     } catch (err: any) {
-      console.error('Delete content error:', err);
+      console.error('❌ Delete content error:', err);
       toast({
         title: 'Error',
         description: 'Failed to delete content',
@@ -246,256 +363,7 @@ export default function EditContentPage() {
     }
   };
 
-  // Media functions
-  const handleFileUpload = async (file: File) => {
-    setIsUploading(true);
-    try {
-      const response = await mediaApi.upload(file);
-      // Attach to content
-      await mediaApi.attachToContent(id, response.media.id, 'inline');
-      // Refresh media lists
-      await loadContentMedia();
-      await loadMediaLibrary();
-      toast({
-        title: 'Success',
-        description: 'Media uploaded and attached',
-      });
-      setUploadFile(null);
-    } catch (error) {
-      console.error('Failed to upload media:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to upload media',
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleAttachMedia = async (mediaId: string) => {
-    try {
-      await mediaApi.attachToContent(id, mediaId, 'inline');
-      await loadContentMedia();
-      toast({
-        title: 'Success',
-        description: 'Media attached to content',
-      });
-    } catch (error) {
-      console.error('Failed to attach media:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to attach media',
-      });
-    }
-  };
-
-  const handleDetachMedia = async (mediaId: string) => {
-    try {
-      await mediaApi.detachFromContent(id, mediaId);
-      setContentMedia(prev => prev.filter(m => m.media.id !== mediaId));
-      toast({
-        title: 'Success',
-        description: 'Media detached from content',
-      });
-    } catch (error) {
-      console.error('Failed to detach media:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to detach media',
-      });
-    }
-  };
-
-  const handleDeleteMedia = async (mediaId: string) => {
-    if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await mediaApi.delete(mediaId);
-      // Update both lists
-      setMediaLibrary(prev => prev.filter(m => m.id !== mediaId));
-      setContentMedia(prev => prev.filter(m => m.media.id !== mediaId));
-      toast({
-        title: 'Success',
-        description: 'Media deleted',
-      });
-    } catch (error) {
-      console.error('Failed to delete media:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to delete media',
-      });
-    }
-  };
-
-  // Media Modal Component
-  const MediaModal = () => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[80vh] flex flex-col">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Media Library</h2>
-            <Button variant="ghost" size="sm" onClick={() => setShowMediaModal(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-hidden flex">
-          {/* Tabs */}
-          <div className="w-64 border-r p-4">
-            <div className="space-y-2">
-              <Button
-                variant={activeMediaTab === 'library' ? 'secondary' : 'ghost'}
-                className="w-full justify-start"
-                onClick={() => setActiveMediaTab('library')}
-              >
-                <ImageIcon className="mr-2 h-4 w-4" />
-                Media Library
-              </Button>
-              <Button
-                variant={activeMediaTab === 'upload' ? 'secondary' : 'ghost'}
-                className="w-full justify-start"
-                onClick={() => setActiveMediaTab('upload')}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Upload New
-              </Button>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 p-4 overflow-auto">
-            {activeMediaTab === 'library' ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search media..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Button onClick={loadMediaLibrary}>Refresh</Button>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {mediaLibrary.map((media) => (
-                    <div key={media.id} className="border rounded-lg overflow-hidden group">
-                      <div className="aspect-square bg-gray-100 relative">
-                        <img
-                          src={media.thumbnail_url || media.url}
-                          alt={media.original_filename}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleAttachMedia(media.id)}
-                          >
-                            Attach
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteMedia(media.id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="p-2">
-                        <p className="text-sm font-medium truncate">
-                          {media.original_filename}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {media.dimensions?.width} × {media.dimensions?.height}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <div className="flex flex-col items-center justify-center gap-4">
-                    <Upload className="h-12 w-12 text-gray-400" />
-                    <div className="space-y-2">
-                      <h3 className="font-semibold">Upload an image</h3>
-                      <p className="text-sm text-gray-500">
-                        Drag and drop or click to browse
-                      </p>
-                    </div>
-                    <div>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) setUploadFile(file);
-                        }}
-                        className="cursor-pointer"
-                      />
-                      <p className="text-xs text-gray-500 mt-2">
-                        Supported formats: JPEG, PNG, GIF, WebP, SVG. Max size: 10MB
-                      </p>
-                    </div>
-                  </div>
-
-                  {uploadFile && (
-                    <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <ImageIcon className="h-8 w-8 text-blue-500" />
-                          <div>
-                            <p className="font-medium">{uploadFile.name}</p>
-                            <p className="text-sm text-gray-500">
-                              {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setUploadFile(null)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowMediaModal(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={() => uploadFile && handleFileUpload(uploadFile)}
-                    disabled={!uploadFile || isUploading}
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      'Upload Image'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
+  // Loading States
   if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -510,6 +378,7 @@ export default function EditContentPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <Button
@@ -556,8 +425,8 @@ export default function EditContentPage() {
                     <Label htmlFor="title">Title *</Label>
                     <Input
                       id="title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
+                      value={formData.title}
+                      onChange={(e) => handleFormChange('title', e.target.value)}
                       placeholder="Enter content title"
                       required
                     />
@@ -567,8 +436,8 @@ export default function EditContentPage() {
                     <Label htmlFor="slug">Slug *</Label>
                     <Input
                       id="slug"
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value)}
+                      value={formData.slug}
+                      onChange={(e) => handleFormChange('slug', e.target.value)}
                       placeholder="url-friendly-slug"
                       required
                     />
@@ -584,57 +453,51 @@ export default function EditContentPage() {
                     >
                       <ImageIcon className="mr-2 h-4 w-4" />
                       Add Media
+                      {selectedMedia.length > 0 && (
+                        <span className="ml-2 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                          {selectedMedia.length}
+                        </span>
+                      )}
                     </Button>
                   </div>
 
                   <LexicalEditor
                     onChange={({ lexical, html, plainText }) => {
-                      setEditorContent(html);
-                      setLexicalState(lexical);
-                      setPlainText(plainText);
+                      handleFormChange('lexicalState', lexical);
+                      handleFormChange('editorContent', html);
+                      handleFormChange('plainText', plainText);
                     }}
-                     contentId={id}
+                    contentId={id}
+                    initialValue={content?.body?.lexical}
                   />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Attached Media Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Attached Media</CardTitle>
-                <CardDescription>
-                  Media files attached to this content
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {contentMedia.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <ImageIcon className="h-12 w-12 mx-auto mb-4" />
-                    <p>No media attached to this content</p>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => setShowMediaModal(true)}
-                    >
-                      Add Media
-                    </Button>
-                  </div>
-                ) : (
+            {/* Attached Media Section */}
+            {contentMedia.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Attached Media</CardTitle>
+                  <CardDescription>
+                    Media files attached to this content
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {contentMedia.map((item) => (
-                      <div key={item.id} className="border rounded-lg overflow-hidden group">
+                    {contentMedia.map((media) => (
+                      <div key={media.id} className="border rounded-lg overflow-hidden group">
                         <div className="aspect-square bg-gray-100 relative">
                           <img
-                            src={item.media.thumbnail_url || item.media.url}
-                            alt={item.media.original_filename}
+                            src={media.thumbnail_url || media.url}
+                            alt={media.original_filename}
                             className="w-full h-full object-cover"
                           />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => handleDetachMedia(item.media.id)}
+                              onClick={() => handleDetachMedia(media.id)}
                             >
                               <Trash2 className="h-4 w-4" />
                               Detach
@@ -643,21 +506,15 @@ export default function EditContentPage() {
                         </div>
                         <div className="p-2">
                           <p className="text-sm font-medium truncate">
-                            {item.media.original_filename}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {item.media.dimensions?.width} × {item.media.dimensions?.height}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Role: {item.role}
+                            {media.original_filename}
                           </p>
                         </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right Column - Settings */}
@@ -670,8 +527,8 @@ export default function EditContentPage() {
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select
-                    value={status}
-                    onValueChange={(value: ContentStatus) => setStatus(value)}
+                    value={formData.status}
+                    onValueChange={(value: ContentStatus) => handleFormChange('status', value)}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -703,8 +560,8 @@ export default function EditContentPage() {
                   <Label htmlFor="excerpt">Excerpt</Label>
                   <Textarea
                     id="excerpt"
-                    value={excerpt}
-                    onChange={(e) => setExcerpt(e.target.value)}
+                    value={formData.excerpt}
+                    onChange={(e) => handleFormChange('excerpt', e.target.value)}
                     placeholder="Brief description of your content"
                     rows={4}
                   />
@@ -714,8 +571,8 @@ export default function EditContentPage() {
                   <Label htmlFor="metaData">Metadata (JSON)</Label>
                   <Textarea
                     id="metaData"
-                    value={metaData}
-                    onChange={(e) => setMetaData(e.target.value)}
+                    value={formData.metaData}
+                    onChange={(e) => handleFormChange('metaData', e.target.value)}
                     placeholder='{"key": "value"}'
                     rows={4}
                   />
@@ -739,43 +596,29 @@ export default function EditContentPage() {
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    {status === ContentStatus.PUBLISHED ? 'Update' : 'Save'}
+                    {formData.status === ContentStatus.PUBLISHED ? 'Update' : 'Save'}
                   </Button>
                 </div>
               </CardFooter>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Statistics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{content.views_count || 0}</div>
-                    <div className="text-sm text-gray-500">Views</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{content.likes_count || 0}</div>
-                    <div className="text-sm text-gray-500">Likes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{content.comments_count || 0}</div>
-                    <div className="text-sm text-gray-500">Comments</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{content.version || 1}</div>
-                    <div className="text-sm text-gray-500">Version</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Statistics */}
+            <ContentStats content={content} />
           </div>
         </div>
       </form>
 
       {/* Media Modal */}
-      {showMediaModal && <MediaModal />}
+      {showMediaModal && (
+        <MediaModal
+          isOpen={showMediaModal}
+          onClose={() => setShowMediaModal(false)}
+          contentId={id}
+          selectedMedia={selectedMedia}
+          onMediaSelect={handleMediaSelect}
+          onSelectedMediaChange={setSelectedMedia}
+        />
+      )}
     </div>
   );
 }

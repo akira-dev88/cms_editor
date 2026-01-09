@@ -175,3 +175,22 @@ figure figcaption {
 .media-item:hover {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
+
+/* Add to your globals.css or component */
+.editor-image-container {
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.editor-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+}
+
+/* Make sure images in Lexical editor are properly styled */
+[class*="editor-image"] img {
+  max-width: 100%;
+  height: auto;
+}
