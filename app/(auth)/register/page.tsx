@@ -40,7 +40,8 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await register({ email, username, password_hash: password });
+      // Fix: Pass password directly, not password_hash
+      await register({ email, username, password });
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
