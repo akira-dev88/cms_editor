@@ -293,7 +293,7 @@ export default function MediaPage() {
             const items = response.data || [];
 
             // Ensure each item has proper URL and thumbnail_url
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.mjkparty.org';
 
             const processedItems = items.map((item: any) => {
                 // Build main URL

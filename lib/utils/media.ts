@@ -18,7 +18,7 @@ export function buildMediaUrl(filePath: any): string {
   const normalizedPath = pathStr.startsWith('/') ? pathStr : `/${pathStr}`;
   
   // Get base URL - IMPORTANT: Check if this is correct!
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.mjkparty.org';
   console.log('🌐 Base URL:', baseUrl);
   
   const fullUrl = `${baseUrl}${normalizedPath}`;

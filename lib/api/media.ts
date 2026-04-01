@@ -76,7 +76,7 @@ export const mediaApi = {
       }
 
       // CRITICAL: Transform the data HERE in the API layer
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.mjkparty.org';
       console.log('🌐 Using base URL:', baseUrl);
 
       const transformedData = rawData.map((item: any) => {
