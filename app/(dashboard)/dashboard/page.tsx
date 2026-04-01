@@ -8,8 +8,6 @@ import {
   FileText,
   Image,
   PlusCircle,
-  Settings,
-  BarChart3,
   Calendar,
   Users,
   Bell,
@@ -42,13 +40,7 @@ export default function DashboardPage() {
       description: 'Upload and manage media files',
       icon: <Image className="h-8 w-8 text-purple-600" />,
       action: () => router.push('/media'),
-    },
-    {
-      title: 'Analytics',
-      description: 'View performance insights',
-      icon: <BarChart3 className="h-8 w-8 text-orange-600" />,
-      action: () => router.push('/analytics'),
-    },
+    }
   ];
 
   return (
@@ -80,7 +72,7 @@ export default function DashboardPage() {
               <p className="text-gray-600">Common tasks to get started</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {quickActions.map((action, index) => (
               <Card
                 key={index}
